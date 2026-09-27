@@ -1,0 +1,307 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Baseline Notebook \u2014 Customer Churn\n",
+    "\n",
+    "Purpose: establish non-ML and simple-ML baselines on `customer-churn-training.csv` **before** any decision to invest in a production model. See the problem-framing memo and data card for the reasoning behind this order of operations.\n",
+    "\n",
+    "**n = 12 rows.** Every result below should be read as illustrative of method, not as a reliable performance estimate."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "execute_result",
+     "execution_count": 1,
+     "metadata": {},
+     "data": {
+      "text/plain": [
+       "   customer_id  tenure_months  support_tickets  monthly_spend_inr  \\\n",
+       "0         C001              2                4                499   \n",
+       "1         C002             18                1               1299   \n",
+       "2         C003              6                3                799   \n",
+       "3         C004             30                0               1499   \n",
+       "4         C005             11                2                999   \n",
+       "5         C006              1                5                499   \n",
+       "6         C007             24                1                999   \n",
+       "7         C008              8                4                799   \n",
+       "8         C009             15                2               1299   \n",
+       "9         C010              4                3                499   \n",
+       "10        C011             20                0                999   \n",
+       "11        C012              7                2                799   \n",
+       "\n",
+       "    last_login_days plan_type  churned  \n",
+       "0                21     Basic        1  \n",
+       "1                 2       Pro        0  \n",
+       "2                14     Basic        1  \n",
+       "3                 1       Pro        0  \n",
+       "4                 5  Standard        0  \n",
+       "5                30     Basic        1  \n",
+       "6                 3  Standard        0  \n",
+       "7                17     Basic        1  \n",
+       "8                 4       Pro        0  \n",
+       "9                12     Basic        1  \n",
+       "10                2  Standard        0  \n",
+       "11                 9  Standard        0  \n"
+      ]
+     }
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "\n",
+    "df = pd.read_csv('customer-churn-training.csv')\n",
+    "df\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Data quality checks"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": [
+      "Shape: (12, 7)\n",
+      "\n",
+      "Missing values per column:\n",
+      "customer_id          0\n",
+      "tenure_months        0\n",
+      "support_tickets      0\n",
+      "monthly_spend_inr    0\n",
+      "last_login_days      0\n",
+      "plan_type            0\n",
+      "churned              0\n",
+      "dtype: int64\n",
+      "\n",
+      "Duplicate rows: 0\n",
+      "\n",
+      "Class balance:\n",
+      "churned\n",
+      "0    7\n",
+      "1    5\n",
+      "Name: count, dtype: int64\n",
+      "\n",
+      "Churn rate by plan_type:\n",
+      "plan_type\n",
+      "Basic       1.0\n",
+      "Pro         0.0\n",
+      "Standard    0.0\n",
+      "Name: churned, dtype: float64\n"
+     ]
+    }
+   ],
+   "source": [
+    "print('Shape:', df.shape)\n",
+    "print('\\nMissing values per column:')\n",
+    "print(df.isna().sum())\n",
+    "print('\\nDuplicate rows:', df.duplicated().sum())\n",
+    "print('\\nClass balance:')\n",
+    "print(df['churned'].value_counts())\n",
+    "print('\\nChurn rate by plan_type:')\n",
+    "print(df.groupby('plan_type')['churned'].mean())\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Finding:** no missing values, no duplicates. But `plan_type` perfectly separates the target (every Basic customer churned, no Standard/Pro customer did). That's the first sign this file is a small illustrative sample rather than a representative production export \u2014 flagged in the data card."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Non-ML baselines"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": [
+      "=== Baseline 1: Majority class (always predict not-churned) ===\n",
+      "Accuracy:  0.5833333333333334\n",
+      "Precision: 0.0\n",
+      "Recall:    0.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix\n",
+    "\n",
+    "y = df['churned'].values\n",
+    "n = len(y)\n",
+    "\n",
+    "# Baseline 1: majority class\n",
+    "majority_pred = np.zeros(n, dtype=int)\n",
+    "print('=== Baseline 1: Majority class (always predict not-churned) ===')\n",
+    "print('Accuracy: ', accuracy_score(y, majority_pred))\n",
+    "print('Precision:', precision_score(y, majority_pred, zero_division=0))\n",
+    "print('Recall:   ', recall_score(y, majority_pred, zero_division=0))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": [
+      "=== Baseline 2: Rule (last_login_days > 10 => churn) ===\n",
+      "Accuracy:  1.0\n",
+      "Precision: 1.0\n",
+      "Recall:    1.0\n",
+      "Confusion matrix:\n",
+      " [[7 0]\n",
+      " [0 5]]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Baseline 2: simple business rule on recency\n",
+    "threshold = 10\n",
+    "rule_pred = (df['last_login_days'] > threshold).astype(int).values\n",
+    "print(f'=== Baseline 2: Rule (last_login_days > {threshold} => churn) ===')\n",
+    "print('Accuracy: ', accuracy_score(y, rule_pred))\n",
+    "print('Precision:', precision_score(y, rule_pred, zero_division=0))\n",
+    "print('Recall:   ', recall_score(y, rule_pred, zero_division=0))\n",
+    "print('Confusion matrix:\\n', confusion_matrix(y, rule_pred))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": [
+      "=== Baseline 3: Rule (plan_type == 'Basic' => churn) ===\n",
+      "Accuracy:  1.0\n",
+      "Precision: 1.0\n",
+      "Recall:    1.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Baseline 3: simple business rule on plan tier\n",
+    "plan_pred = (df['plan_type'] == 'Basic').astype(int).values\n",
+    "print(\"=== Baseline 3: Rule (plan_type == 'Basic' => churn) ===\")\n",
+    "print('Accuracy: ', accuracy_score(y, plan_pred))\n",
+    "print('Precision:', precision_score(y, plan_pred, zero_division=0))\n",
+    "print('Recall:   ', recall_score(y, plan_pred, zero_division=0))\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Finding:** two single-feature business rules already reach 100% accuracy on this file. Any ML model must be judged against these, not against the majority-class baseline alone."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Simple ML baseline (logistic regression, leave-one-out CV)\n",
+    "With only 12 rows, a train/test split would leave single-digit samples per class, so leave-one-out cross-validation is used instead. This still should not be read as a reliable performance estimate \u2014 it's included to show the *method*, to be repeated properly once a real dataset is available."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": [
+      "=== Logistic Regression (Leave-One-Out CV) ===\n",
+      "Accuracy:  0.9166666666666666\n",
+      "Precision: 0.8333333333333334\n",
+      "Recall:    1.0\n",
+      "Confusion matrix:\n",
+      " [[6 1]\n",
+      " [0 5]]\n"
+     ]
+    }
+   ],
+   "source": [
+    "from sklearn.linear_model import LogisticRegression\n",
+    "from sklearn.model_selection import LeaveOneOut\n",
+    "\n",
+    "X = pd.get_dummies(\n",
+    "    df[['tenure_months','support_tickets','monthly_spend_inr','last_login_days','plan_type']],\n",
+    "    columns=['plan_type'], drop_first=True\n",
+    ")\n",
+    "\n",
+    "loo = LeaveOneOut()\n",
+    "preds = np.zeros(n, dtype=int)\n",
+    "for train_idx, test_idx in loo.split(X):\n",
+    "    model = LogisticRegression(max_iter=1000)\n",
+    "    model.fit(X.iloc[train_idx], y[train_idx])\n",
+    "    preds[test_idx] = model.predict(X.iloc[test_idx])\n",
+    "\n",
+    "print('=== Logistic Regression (Leave-One-Out CV) ===')\n",
+    "print('Accuracy: ', accuracy_score(y, preds))\n",
+    "print('Precision:', precision_score(y, preds, zero_division=0))\n",
+    "print('Recall:   ', recall_score(y, preds, zero_division=0))\n",
+    "print('Confusion matrix:\\n', confusion_matrix(y, preds))\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Comparison table\n",
+    "\n",
+    "| Approach | Accuracy | Precision | Recall |\n",
+    "|---|---|---|---|\n",
+    "| Majority class | 58.3% | 0.00 | 0.00 |\n",
+    "| Rule: last_login_days > 10 | 100% | 1.00 | 1.00 |\n",
+    "| Rule: plan_type == Basic | 100% | 1.00 | 1.00 |\n",
+    "| Logistic regression (LOOCV) | 91.7% | 0.83 | 1.00 |\n",
+    "\n",
+    "## 5. Conclusion\n",
+    "On this file, the ML model does **not** beat the simple business rules \u2014 it's worse. Combined with the perfect class separation and n=12 sample size (see the data card), the recommendation is to **not** proceed to a production ML model on this data. Ship and monitor the simple rule instead, and revisit ML only once a larger, properly time-stamped dataset is available (see the problem-framing memo, section 6, for full reasoning)."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.11"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
